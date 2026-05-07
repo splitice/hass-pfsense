@@ -41,12 +41,14 @@ from .const import (
     DEFAULT_VERIFY_SSL,
     DEVICE_TRACKER_COORDINATOR,
     DOMAIN,
+    GATEWAY_DEVICE_UNIQUE_ID,
     LOADED_PLATFORMS,
     PFSENSE_CLIENT,
     PLATFORMS,
     SHOULD_RELOAD,
     UNDO_UPDATE_LISTENER,
 )
+from .device import get_gateway_device_unique_id
 from .pypfsense import Client as pfSenseClient
 from .services import ServiceRegistrar
 
@@ -152,6 +154,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
 
     # Fetch initial data so we have data when entities subscribe
     await coordinator.async_config_entry_first_refresh()
+    gateway_device_unique_id = get_gateway_device_unique_id(
+        entry.unique_id,
+        dict_get(coordinator.data, "system_info.netgate_device_id"),
+    )
+    hass.data[DOMAIN][entry.entry_id][GATEWAY_DEVICE_UNIQUE_ID] = (
+        gateway_device_unique_id
+    )
     if device_tracker_enabled:
         # Fetch initial data so we have data when entities subscribe
         await device_tracker_coordinator.async_config_entry_first_refresh()
@@ -626,7 +635,11 @@ class PfSenseEntity(CoordinatorEntity, RestoreEntity):
 
     @property
     def pfsense_device_unique_id(self):
-        return self._get_pfsense_state_value("system_info.netgate_device_id")
+        return get_gateway_device_unique_id(
+            self.config_entry.unique_id,
+            self._get_pfsense_state_value("system_info.netgate_device_id"),
+            getattr(self, "_pfsense_gateway_unique_id", None),
+        )
 
     def _get_pfsense_state_value(self, path, default=None):
         state = self.coordinator.data
