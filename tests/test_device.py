@@ -35,7 +35,7 @@ class GetGatewayDeviceUniqueIdTests(unittest.TestCase):
             "firewall-device-id",
         )
 
-    def test_uses_current_unique_id_before_config_entry_unique_id(self) -> None:
+    def test_uses_current_unique_id_when_no_cache(self) -> None:
         """Use the live pfSense ID when no cached value exists yet."""
         self.assertEqual(
             get_gateway_device_unique_id(

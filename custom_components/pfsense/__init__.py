@@ -157,6 +157,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     gateway_device_unique_id = get_gateway_device_unique_id(
         entry.unique_id,
         dict_get(coordinator.data, "system_info.netgate_device_id"),
+        hass.data[DOMAIN][entry.entry_id].get(GATEWAY_DEVICE_UNIQUE_ID),
     )
     hass.data[DOMAIN][entry.entry_id][GATEWAY_DEVICE_UNIQUE_ID] = (
         gateway_device_unique_id
