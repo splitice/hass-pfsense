@@ -173,6 +173,33 @@ class GetRemovableDuplicateGatewayDeviceIdsTests(unittest.TestCase):
             [],
         )
 
+    def test_allows_manual_removal_of_duplicate_gateway_with_entities(self) -> None:
+        """Manual duplicate deletion can ignore stale entity attachments."""
+        devices = [
+            MockDevice(
+                id="canonical",
+                identifiers={("pfsense", "gateway-id")},
+                config_entries={"entry-id"},
+            ),
+            MockDevice(
+                id="duplicate",
+                identifiers={("pfsense", "legacy-id")},
+                config_entries={"entry-id"},
+            ),
+        ]
+
+        self.assertEqual(
+            get_removable_duplicate_gateway_device_ids(
+                devices,
+                "entry-id",
+                "pfsense",
+                "gateway-id",
+                {"canonical", "duplicate"},
+                require_no_entities=False,
+            ),
+            ["duplicate"],
+        )
+
     def test_skips_duplicate_gateway_with_child_devices(self) -> None:
         """Keep duplicates while other devices still point at them."""
         devices = [

@@ -62,6 +62,7 @@ def get_removable_duplicate_gateway_device_ids(
     domain: str,
     gateway_device_unique_id: str | None,
     entity_device_ids: set[str],
+    require_no_entities: bool = True,
 ) -> list[str]:
     """Return duplicate gateway device IDs that can be safely removed."""
     if not gateway_device_unique_id:
@@ -79,7 +80,7 @@ def get_removable_duplicate_gateway_device_ids(
             continue
         if not any(identifier[0] == domain for identifier in device.identifiers):
             continue
-        if device.id in entity_device_ids:
+        if require_no_entities and device.id in entity_device_ids:
             continue
         if device.id in device_ids_with_children:
             continue

@@ -132,45 +132,76 @@ async def async_remove_config_entry_device(
     config_entry: ConfigEntry,
     device_entry,
 ) -> bool:
-    """Remove a pfSense child device from a config entry."""
+    """Remove a pfSense child device or removable duplicate gateway."""
+    entity_registry = async_get_entity_registry(hass)
+    device_entity_entries = list(
+        async_entries_for_entity_device(
+            entity_registry, device_entry.id, include_disabled_entities=True
+        )
+    )
+
     child_device_mac_address = get_child_device_mac_address(
         device_entry, config_entry.entry_id
     )
-    if child_device_mac_address is None:
+    if child_device_mac_address is not None:
+        for entity_entry in device_entity_entries:
+            entity_registry.async_remove(entity_entry.entity_id)
+
+        configured_mac_addresses, tracked_mac_addresses = (
+            remove_device_mac_address_from_lists(
+                child_device_mac_address,
+                list(config_entry.options.get(CONF_DEVICES, [])),
+                list(config_entry.data.get(TRACKED_MACS, [])),
+            )
+        )
+
+        new_options = dict(config_entry.options)
+        new_data = dict(config_entry.data)
+        options_changed = configured_mac_addresses != new_options.get(CONF_DEVICES, [])
+        data_changed = tracked_mac_addresses != new_data.get(TRACKED_MACS, [])
+
+        if options_changed:
+            new_options[CONF_DEVICES] = configured_mac_addresses
+        if data_changed:
+            new_data[TRACKED_MACS] = tracked_mac_addresses
+
+        if options_changed or data_changed:
+            if DOMAIN in hass.data and config_entry.entry_id in hass.data[DOMAIN]:
+                hass.data[DOMAIN][config_entry.entry_id][SHOULD_RELOAD] = False
+            hass.config_entries.async_update_entry(
+                config_entry,
+                data=new_data,
+                options=new_options,
+            )
+
+        return True
+
+    device_registry = async_get_device_registry(hass)
+    devices = async_entries_for_device_config_entry(device_registry, config_entry.entry_id)
+    gateway_device_unique_id = (
+        hass.data.get(DOMAIN, {})
+        .get(config_entry.entry_id, {})
+        .get(GATEWAY_DEVICE_UNIQUE_ID, config_entry.unique_id)
+    )
+    duplicate_gateway_device_ids = get_removable_duplicate_gateway_device_ids(
+        devices,
+        config_entry.entry_id,
+        DOMAIN,
+        gateway_device_unique_id,
+        {
+            entity.device_id
+            for entity in async_entries_for_entity_config_entry(
+                entity_registry, config_entry.entry_id
+            )
+            if entity.device_id
+        },
+        require_no_entities=False,
+    )
+    if device_entry.id not in duplicate_gateway_device_ids:
         return False
 
-    entity_registry = async_get_entity_registry(hass)
-    for entity_entry in async_entries_for_entity_device(
-        entity_registry, device_entry.id, include_disabled_entities=True
-    ):
+    for entity_entry in device_entity_entries:
         entity_registry.async_remove(entity_entry.entity_id)
-
-    configured_mac_addresses, tracked_mac_addresses = (
-        remove_device_mac_address_from_lists(
-            child_device_mac_address,
-            list(config_entry.options.get(CONF_DEVICES, [])),
-            list(config_entry.data.get(TRACKED_MACS, [])),
-        )
-    )
-
-    new_options = dict(config_entry.options)
-    new_data = dict(config_entry.data)
-    options_changed = configured_mac_addresses != new_options.get(CONF_DEVICES, [])
-    data_changed = tracked_mac_addresses != new_data.get(TRACKED_MACS, [])
-
-    if options_changed:
-        new_options[CONF_DEVICES] = configured_mac_addresses
-    if data_changed:
-        new_data[TRACKED_MACS] = tracked_mac_addresses
-
-    if options_changed or data_changed:
-        if DOMAIN in hass.data and config_entry.entry_id in hass.data[DOMAIN]:
-            hass.data[DOMAIN][config_entry.entry_id][SHOULD_RELOAD] = False
-        hass.config_entries.async_update_entry(
-            config_entry,
-            data=new_data,
-            options=new_options,
-        )
 
     return True
 
