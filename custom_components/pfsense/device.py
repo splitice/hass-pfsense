@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
+
 def get_gateway_device_unique_id(
     config_entry_unique_id: str | None,
     current_unique_id: str | None,
@@ -15,6 +16,54 @@ def get_gateway_device_unique_id(
     if current_unique_id:
         return current_unique_id
     return config_entry_unique_id
+
+
+def get_existing_gateway_device_unique_id(
+    devices: Iterable,
+    config_entry_id: str,
+    domain: str,
+    entity_device_ids: set[str],
+    current_unique_id: str | None = None,
+    config_entry_unique_id: str | None = None,
+) -> str | None:
+    """Return the best existing gateway device ID for a config entry."""
+    selected_unique_id = None
+    selected_score = None
+
+    for device in devices:
+        if config_entry_id not in device.config_entries:
+            continue
+        if device.via_device_id is not None:
+            continue
+
+        gateway_unique_ids = sorted(
+            identifier[1]
+            for identifier in device.identifiers
+            if identifier[0] == domain
+        )
+        if not gateway_unique_ids:
+            continue
+
+        device_score = (
+            device.id in entity_device_ids,
+            current_unique_id in gateway_unique_ids if current_unique_id else False,
+            (
+                config_entry_unique_id in gateway_unique_ids
+                if config_entry_unique_id
+                else False
+            ),
+        )
+        device_unique_id = gateway_unique_ids[0]
+        if current_unique_id in gateway_unique_ids:
+            device_unique_id = current_unique_id
+        elif config_entry_unique_id in gateway_unique_ids:
+            device_unique_id = config_entry_unique_id
+
+        if selected_score is None or device_score > selected_score:
+            selected_score = device_score
+            selected_unique_id = device_unique_id
+
+    return selected_unique_id
 
 
 def get_child_device_mac_address(

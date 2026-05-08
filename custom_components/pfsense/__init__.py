@@ -39,9 +39,9 @@ from homeassistant.helpers.update_coordinator import (
 )
 
 from .const import (
-    CONF_DEVICES,
     CONF_DEVICE_TRACKER_ENABLED,
     CONF_DEVICE_TRACKER_SCAN_INTERVAL,
+    CONF_DEVICES,
     CONF_TLS_INSECURE,
     COORDINATOR,
     DEFAULT_DEVICE_TRACKER_ENABLED,
@@ -61,6 +61,7 @@ from .const import (
 )
 from .device import (
     get_child_device_mac_address,
+    get_existing_gateway_device_unique_id,
     get_gateway_device_unique_id,
     get_removable_duplicate_gateway_device_ids,
     remove_device_mac_address_from_lists,
@@ -111,7 +112,9 @@ async def _async_remove_duplicate_gateway_devices(
     devices = async_entries_for_device_config_entry(device_registry, entry.entry_id)
     entity_device_ids = {
         entity.device_id
-        for entity in async_entries_for_entity_config_entry(entity_registry, entry.entry_id)
+        for entity in async_entries_for_entity_config_entry(
+            entity_registry, entry.entry_id
+        )
         if entity.device_id
     }
 
@@ -174,7 +177,9 @@ async def async_remove_config_entry_device(
         return True
 
     device_registry = async_get_device_registry(hass)
-    devices = async_entries_for_device_config_entry(device_registry, config_entry.entry_id)
+    devices = async_entries_for_device_config_entry(
+        device_registry, config_entry.entry_id
+    )
     gateway_device_unique_id = (
         hass.data.get(DOMAIN, {})
         .get(config_entry.entry_id, {})
@@ -285,14 +290,33 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
 
     # Fetch initial data so we have data when entities subscribe
     await coordinator.async_config_entry_first_refresh()
+    device_registry = async_get_device_registry(hass)
+    entity_registry = async_get_entity_registry(hass)
+    devices = async_entries_for_device_config_entry(device_registry, entry.entry_id)
+    entity_device_ids = {
+        entity.device_id
+        for entity in async_entries_for_entity_config_entry(
+            entity_registry, entry.entry_id
+        )
+        if entity.device_id
+    }
+    existing_gateway_device_unique_id = get_existing_gateway_device_unique_id(
+        devices,
+        entry.entry_id,
+        DOMAIN,
+        entity_device_ids,
+        current_unique_id=dict_get(coordinator.data, "system_info.netgate_device_id"),
+        config_entry_unique_id=entry.unique_id,
+    )
     gateway_device_unique_id = get_gateway_device_unique_id(
         entry.unique_id,
         dict_get(coordinator.data, "system_info.netgate_device_id"),
-        hass.data[DOMAIN][entry.entry_id].get(GATEWAY_DEVICE_UNIQUE_ID),
+        existing_gateway_device_unique_id
+        or hass.data[DOMAIN][entry.entry_id].get(GATEWAY_DEVICE_UNIQUE_ID),
     )
-    hass.data[DOMAIN][entry.entry_id][GATEWAY_DEVICE_UNIQUE_ID] = (
-        gateway_device_unique_id
-    )
+    hass.data[DOMAIN][entry.entry_id][
+        GATEWAY_DEVICE_UNIQUE_ID
+    ] = gateway_device_unique_id
     if device_tracker_enabled:
         # Fetch initial data so we have data when entities subscribe
         await device_tracker_coordinator.async_config_entry_first_refresh()

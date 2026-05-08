@@ -7,12 +7,8 @@ import importlib.util
 from pathlib import Path
 import unittest
 
-
 MODULE_PATH = (
-    Path(__file__).resolve().parents[1]
-    / "custom_components"
-    / "pfsense"
-    / "device.py"
+    Path(__file__).resolve().parents[1] / "custom_components" / "pfsense" / "device.py"
 )
 SPEC = importlib.util.spec_from_file_location("pfsense_device", MODULE_PATH)
 MODULE = importlib.util.module_from_spec(SPEC)
@@ -20,6 +16,7 @@ assert SPEC.loader is not None
 SPEC.loader.exec_module(MODULE)
 
 get_gateway_device_unique_id = MODULE.get_gateway_device_unique_id
+get_existing_gateway_device_unique_id = MODULE.get_existing_gateway_device_unique_id
 get_child_device_mac_address = MODULE.get_child_device_mac_address
 remove_device_mac_address_from_lists = MODULE.remove_device_mac_address_from_lists
 get_removable_duplicate_gateway_device_ids = (
@@ -115,6 +112,86 @@ class ChildDeviceRemovalHelperTests(unittest.TestCase):
                 ["11:22:33:44:55:66"],
                 ["77:88:99:AA:BB:CC"],
             ),
+        )
+
+
+class GetExistingGatewayDeviceUniqueIdTests(unittest.TestCase):
+    """Cover stable reuse of existing gateway devices."""
+
+    def test_prefers_existing_gateway_device_with_entities(self) -> None:
+        """Keep using the existing entity-backed gateway device on upgrade."""
+        devices = [
+            MockDevice(
+                id="legacy",
+                identifiers={("pfsense", "entry-device-id")},
+                config_entries={"entry-id"},
+            ),
+            MockDevice(
+                id="current",
+                identifiers={("pfsense", "firewall-device-id")},
+                config_entries={"entry-id"},
+            ),
+        ]
+
+        self.assertEqual(
+            get_existing_gateway_device_unique_id(
+                devices,
+                "entry-id",
+                "pfsense",
+                {"legacy"},
+                current_unique_id="firewall-device-id",
+                config_entry_unique_id="entry-device-id",
+            ),
+            "entry-device-id",
+        )
+
+    def test_prefers_current_gateway_identifier_when_it_already_exists(self) -> None:
+        """Reuse the current pfSense device ID when it is already registered."""
+        devices = [
+            MockDevice(
+                id="legacy",
+                identifiers={("pfsense", "entry-device-id")},
+                config_entries={"entry-id"},
+            ),
+            MockDevice(
+                id="current",
+                identifiers={("pfsense", "firewall-device-id")},
+                config_entries={"entry-id"},
+            ),
+        ]
+
+        self.assertEqual(
+            get_existing_gateway_device_unique_id(
+                devices,
+                "entry-id",
+                "pfsense",
+                {"current"},
+                current_unique_id="firewall-device-id",
+                config_entry_unique_id="entry-device-id",
+            ),
+            "firewall-device-id",
+        )
+
+    def test_ignores_child_devices(self) -> None:
+        """Child devices must not be considered gateway-device candidates."""
+        devices = [
+            MockDevice(
+                id="tracker",
+                identifiers={("pfsense", "child-id")},
+                config_entries={"entry-id"},
+                via_device_id="gateway",
+            )
+        ]
+
+        self.assertIsNone(
+            get_existing_gateway_device_unique_id(
+                devices,
+                "entry-id",
+                "pfsense",
+                set(),
+                current_unique_id="firewall-device-id",
+                config_entry_unique_id="entry-device-id",
+            )
         )
 
 
