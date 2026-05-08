@@ -30,6 +30,9 @@ def get_removable_duplicate_gateway_device_ids(
 
     gateway_identifier = (domain, gateway_device_unique_id)
     devices = list(devices)
+    device_ids_with_children = {
+        device.via_device_id for device in devices if device.via_device_id
+    }
     duplicate_device_ids = []
 
     for device in devices:
@@ -39,7 +42,7 @@ def get_removable_duplicate_gateway_device_ids(
             continue
         if device.id in entity_device_ids:
             continue
-        if any(other_device.via_device_id == device.id for other_device in devices):
+        if device.id in device_ids_with_children:
             continue
         if device.config_entries != {config_entry_id}:
             continue

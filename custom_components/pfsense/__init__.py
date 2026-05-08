@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import copy
 from datetime import timedelta
 import logging
@@ -87,8 +88,7 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry):
         hass.data[DOMAIN][entry.entry_id][SHOULD_RELOAD] = True
 
 
-@callback
-def _async_remove_duplicate_gateway_devices(
+async def _async_remove_duplicate_gateway_devices(
     hass: HomeAssistant,
     entry: ConfigEntry,
     gateway_device_unique_id: str | None,
@@ -96,6 +96,8 @@ def _async_remove_duplicate_gateway_devices(
     """Remove duplicate pfSense gateway devices when they are no longer in use."""
     if not gateway_device_unique_id:
         return
+
+    await asyncio.sleep(0)
 
     device_registry = async_get_device_registry(hass)
     entity_registry = async_get_entity_registry(hass)
@@ -208,7 +210,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
         await device_tracker_coordinator.async_config_entry_first_refresh()
 
     await hass.config_entries.async_forward_entry_setups(entry, platforms)
-    _async_remove_duplicate_gateway_devices(hass, entry, gateway_device_unique_id)
+    hass.async_create_task(
+        _async_remove_duplicate_gateway_devices(hass, entry, gateway_device_unique_id)
+    )
 
     service_registar = ServiceRegistrar(hass)
     service_registar.async_register()
