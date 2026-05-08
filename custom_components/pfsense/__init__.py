@@ -20,8 +20,15 @@ from homeassistant.const import (
     CONF_VERIFY_SSL,
 )
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.device_registry import (
+    async_entries_for_config_entry as async_entries_for_device_config_entry,
+    async_get as async_get_device_registry,
+)
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.entity_registry import async_get
+from homeassistant.helpers.entity_registry import (
+    async_entries_for_config_entry as async_entries_for_entity_config_entry,
+    async_get as async_get_entity_registry,
+)
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import (
     CoordinatorEntity,
@@ -48,7 +55,10 @@ from .const import (
     SHOULD_RELOAD,
     UNDO_UPDATE_LISTENER,
 )
-from .device import get_gateway_device_unique_id
+from .device import (
+    get_gateway_device_unique_id,
+    get_removable_duplicate_gateway_device_ids,
+)
 from .pypfsense import Client as pfSenseClient
 from .services import ServiceRegistrar
 
@@ -75,6 +85,37 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry):
         hass.async_create_task(hass.config_entries.async_reload(entry.entry_id))
     else:
         hass.data[DOMAIN][entry.entry_id][SHOULD_RELOAD] = True
+
+
+@callback
+def _async_remove_duplicate_gateway_devices(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    gateway_device_unique_id: str | None,
+) -> None:
+    """Remove duplicate pfSense gateway devices when they are no longer in use."""
+    if not gateway_device_unique_id:
+        return
+
+    device_registry = async_get_device_registry(hass)
+    entity_registry = async_get_entity_registry(hass)
+    devices = async_entries_for_device_config_entry(device_registry, entry.entry_id)
+    entity_device_ids = {
+        entity.device_id
+        for entity in async_entries_for_entity_config_entry(entity_registry, entry.entry_id)
+        if entity.device_id
+    }
+
+    duplicate_device_ids = get_removable_duplicate_gateway_device_ids(
+        devices,
+        entry.entry_id,
+        DOMAIN,
+        gateway_device_unique_id,
+        entity_device_ids,
+    )
+    for device_id in duplicate_device_ids:
+        _LOGGER.info("Removing duplicate pfSense gateway device %s", device_id)
+        device_registry.async_remove_device(device_id)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
@@ -167,6 +208,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
         await device_tracker_coordinator.async_config_entry_first_refresh()
 
     await hass.config_entries.async_forward_entry_setups(entry, platforms)
+    _async_remove_duplicate_gateway_devices(hass, entry, gateway_device_unique_id)
 
     service_registar = ServiceRegistrar(hass)
     service_registar.async_register()
@@ -593,7 +635,7 @@ class CoordinatorEntityManager:
                 # del self.entities[entity_unique_id]
 
     async def async_remove_entity(self, entity):
-        registry = await async_get(self.hass)
+        registry = async_get_entity_registry(self.hass)
         if entity.entity_id in registry.entities:
             registry.async_remove(entity.entity_id)
 

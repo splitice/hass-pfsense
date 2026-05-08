@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 import importlib.util
 from pathlib import Path
 import unittest
@@ -19,6 +20,9 @@ assert SPEC.loader is not None
 SPEC.loader.exec_module(MODULE)
 
 get_gateway_device_unique_id = MODULE.get_gateway_device_unique_id
+get_removable_duplicate_gateway_device_ids = (
+    MODULE.get_removable_duplicate_gateway_device_ids
+)
 
 
 class GetGatewayDeviceUniqueIdTests(unittest.TestCase):
@@ -50,6 +54,104 @@ class GetGatewayDeviceUniqueIdTests(unittest.TestCase):
         self.assertEqual(
             get_gateway_device_unique_id("entry-device-id", None),
             "entry-device-id",
+        )
+
+
+@dataclass
+class MockDevice:
+    """Minimal device-registry entry for helper tests."""
+
+    id: str
+    identifiers: set[tuple[str, str]]
+    config_entries: set[str] = field(default_factory=set)
+    via_device_id: str | None = None
+
+
+class GetRemovableDuplicateGatewayDeviceIdsTests(unittest.TestCase):
+    """Cover duplicate gateway cleanup selection."""
+
+    def test_returns_orphaned_duplicate_gateway(self) -> None:
+        """Remove older gateway devices once nothing references them."""
+        devices = [
+            MockDevice(
+                id="canonical",
+                identifiers={("pfsense", "gateway-id")},
+                config_entries={"entry-id"},
+            ),
+            MockDevice(
+                id="duplicate",
+                identifiers={("pfsense", "legacy-id")},
+                config_entries={"entry-id"},
+            ),
+        ]
+
+        self.assertEqual(
+            get_removable_duplicate_gateway_device_ids(
+                devices,
+                "entry-id",
+                "pfsense",
+                "gateway-id",
+                {"canonical"},
+            ),
+            ["duplicate"],
+        )
+
+    def test_skips_duplicate_gateway_with_entities(self) -> None:
+        """Keep duplicates that still own entity-registry entries."""
+        devices = [
+            MockDevice(
+                id="canonical",
+                identifiers={("pfsense", "gateway-id")},
+                config_entries={"entry-id"},
+            ),
+            MockDevice(
+                id="duplicate",
+                identifiers={("pfsense", "legacy-id")},
+                config_entries={"entry-id"},
+            ),
+        ]
+
+        self.assertEqual(
+            get_removable_duplicate_gateway_device_ids(
+                devices,
+                "entry-id",
+                "pfsense",
+                "gateway-id",
+                {"canonical", "duplicate"},
+            ),
+            [],
+        )
+
+    def test_skips_duplicate_gateway_with_child_devices(self) -> None:
+        """Keep duplicates while other devices still point at them."""
+        devices = [
+            MockDevice(
+                id="canonical",
+                identifiers={("pfsense", "gateway-id")},
+                config_entries={"entry-id"},
+            ),
+            MockDevice(
+                id="duplicate",
+                identifiers={("pfsense", "legacy-id")},
+                config_entries={"entry-id"},
+            ),
+            MockDevice(
+                id="tracker",
+                identifiers=set(),
+                config_entries={"entry-id"},
+                via_device_id="duplicate",
+            ),
+        ]
+
+        self.assertEqual(
+            get_removable_duplicate_gateway_device_ids(
+                devices,
+                "entry-id",
+                "pfsense",
+                "gateway-id",
+                {"canonical", "tracker"},
+            ),
+            [],
         )
 
 
