@@ -17,6 +17,45 @@ def get_gateway_device_unique_id(
     return config_entry_unique_id
 
 
+def get_child_device_mac_address(
+    device,
+    config_entry_id: str,
+    mac_connection_key: str = "mac",
+) -> str | None:
+    """Return the MAC address for a removable child device."""
+    if device.via_device_id is None:
+        return None
+    if config_entry_id not in device.config_entries:
+        return None
+
+    for connection_type, connection_value in device.connections:
+        if connection_type == mac_connection_key:
+            return connection_value.lower()
+
+    return None
+
+
+def remove_device_mac_address_from_lists(
+    mac_address: str,
+    configured_mac_addresses: list[str],
+    tracked_mac_addresses: list[str],
+) -> tuple[list[str], list[str]]:
+    """Remove a MAC address from configured and tracked MAC address lists."""
+    normalized_mac_address = mac_address.lower()
+    return (
+        [
+            configured_mac_address
+            for configured_mac_address in configured_mac_addresses
+            if configured_mac_address.lower() != normalized_mac_address
+        ],
+        [
+            tracked_mac_address
+            for tracked_mac_address in tracked_mac_addresses
+            if tracked_mac_address.lower() != normalized_mac_address
+        ],
+    )
+
+
 def get_removable_duplicate_gateway_device_ids(
     devices: Iterable,
     config_entry_id: str,

@@ -20,6 +20,8 @@ assert SPEC.loader is not None
 SPEC.loader.exec_module(MODULE)
 
 get_gateway_device_unique_id = MODULE.get_gateway_device_unique_id
+get_child_device_mac_address = MODULE.get_child_device_mac_address
+remove_device_mac_address_from_lists = MODULE.remove_device_mac_address_from_lists
 get_removable_duplicate_gateway_device_ids = (
     MODULE.get_removable_duplicate_gateway_device_ids
 )
@@ -63,8 +65,57 @@ class MockDevice:
 
     id: str
     identifiers: set[tuple[str, str]]
+    connections: set[tuple[str, str]] = field(default_factory=set)
     config_entries: set[str] = field(default_factory=set)
     via_device_id: str | None = None
+
+
+class ChildDeviceRemovalHelperTests(unittest.TestCase):
+    """Cover child-device deletion helpers."""
+
+    def test_get_child_device_mac_address_returns_mac_for_child_device(self) -> None:
+        """Child devices expose their MAC address for UI deletion."""
+        self.assertEqual(
+            get_child_device_mac_address(
+                MockDevice(
+                    id="tracker",
+                    identifiers=set(),
+                    connections={("mac", "AA:BB:CC:DD:EE:FF")},
+                    config_entries={"entry-id"},
+                    via_device_id="gateway",
+                ),
+                "entry-id",
+            ),
+            "aa:bb:cc:dd:ee:ff",
+        )
+
+    def test_get_child_device_mac_address_ignores_gateway_devices(self) -> None:
+        """Gateway devices are not removable through the child-device flow."""
+        self.assertIsNone(
+            get_child_device_mac_address(
+                MockDevice(
+                    id="gateway",
+                    identifiers={("pfsense", "gateway-id")},
+                    connections={("mac", "AA:BB:CC:DD:EE:FF")},
+                    config_entries={"entry-id"},
+                ),
+                "entry-id",
+            )
+        )
+
+    def test_remove_device_mac_address_from_lists_is_case_insensitive(self) -> None:
+        """Removing a child device drops its MAC from both config lists."""
+        self.assertEqual(
+            remove_device_mac_address_from_lists(
+                "aa:bb:cc:dd:ee:ff",
+                ["11:22:33:44:55:66", "AA:BB:CC:DD:EE:FF"],
+                ["aa:bb:cc:dd:ee:ff", "77:88:99:AA:BB:CC"],
+            ),
+            (
+                ["11:22:33:44:55:66"],
+                ["77:88:99:AA:BB:CC"],
+            ),
+        )
 
 
 class GetRemovableDuplicateGatewayDeviceIdsTests(unittest.TestCase):

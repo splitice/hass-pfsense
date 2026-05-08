@@ -28,6 +28,7 @@ from homeassistant.helpers.device_registry import (
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.entity_registry import (
     async_entries_for_config_entry as async_entries_for_entity_config_entry,
+    async_entries_for_device as async_entries_for_entity_device,
     async_get as async_get_entity_registry,
 )
 from homeassistant.helpers.restore_state import RestoreEntity
@@ -38,6 +39,7 @@ from homeassistant.helpers.update_coordinator import (
 )
 
 from .const import (
+    CONF_DEVICES,
     CONF_DEVICE_TRACKER_ENABLED,
     CONF_DEVICE_TRACKER_SCAN_INTERVAL,
     CONF_TLS_INSECURE,
@@ -54,11 +56,14 @@ from .const import (
     PFSENSE_CLIENT,
     PLATFORMS,
     SHOULD_RELOAD,
+    TRACKED_MACS,
     UNDO_UPDATE_LISTENER,
 )
 from .device import (
+    get_child_device_mac_address,
     get_gateway_device_unique_id,
     get_removable_duplicate_gateway_device_ids,
+    remove_device_mac_address_from_lists,
 )
 from .pypfsense import Client as pfSenseClient
 from .services import ServiceRegistrar
@@ -120,6 +125,54 @@ async def _async_remove_duplicate_gateway_devices(
     for device_id in duplicate_device_ids:
         _LOGGER.info("Removing duplicate pfSense gateway device %s", device_id)
         device_registry.async_remove_device(device_id)
+
+
+async def async_remove_config_entry_device(
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+    device_entry,
+) -> bool:
+    """Remove a pfSense child device from a config entry."""
+    child_device_mac_address = get_child_device_mac_address(
+        device_entry, config_entry.entry_id
+    )
+    if child_device_mac_address is None:
+        return False
+
+    entity_registry = async_get_entity_registry(hass)
+    for entity_entry in async_entries_for_entity_device(
+        entity_registry, device_entry.id, include_disabled_entities=True
+    ):
+        entity_registry.async_remove(entity_entry.entity_id)
+
+    configured_mac_addresses, tracked_mac_addresses = (
+        remove_device_mac_address_from_lists(
+            child_device_mac_address,
+            list(config_entry.options.get(CONF_DEVICES, [])),
+            list(config_entry.data.get(TRACKED_MACS, [])),
+        )
+    )
+
+    new_options = dict(config_entry.options)
+    new_data = dict(config_entry.data)
+    options_changed = configured_mac_addresses != new_options.get(CONF_DEVICES, [])
+    data_changed = tracked_mac_addresses != new_data.get(TRACKED_MACS, [])
+
+    if options_changed:
+        new_options[CONF_DEVICES] = configured_mac_addresses
+    if data_changed:
+        new_data[TRACKED_MACS] = tracked_mac_addresses
+
+    if options_changed or data_changed:
+        if DOMAIN in hass.data and config_entry.entry_id in hass.data[DOMAIN]:
+            hass.data[DOMAIN][config_entry.entry_id][SHOULD_RELOAD] = False
+        hass.config_entries.async_update_entry(
+            config_entry,
+            data=new_data,
+            options=new_options,
+        )
+
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
