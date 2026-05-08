@@ -65,6 +65,12 @@ class MockDevice:
     connections: set[tuple[str, str]] = field(default_factory=set)
     config_entries: set[str] = field(default_factory=set)
     via_device_id: str | None = None
+    disabled_by: str | None = None
+
+    @property
+    def disabled(self) -> bool:
+        """Return whether the mock device is disabled."""
+        return self.disabled_by is not None
 
 
 class ChildDeviceRemovalHelperTests(unittest.TestCase):
@@ -166,6 +172,34 @@ class GetExistingGatewayDeviceUniqueIdTests(unittest.TestCase):
                 "entry-id",
                 "pfsense",
                 {"current"},
+                current_unique_id="firewall-device-id",
+                config_entry_unique_id="entry-device-id",
+            ),
+            "firewall-device-id",
+        )
+
+    def test_prefers_enabled_gateway_over_disabled_entity_backed_gateway(self) -> None:
+        """Avoid attaching new entities to a disabled duplicate gateway device."""
+        devices = [
+            MockDevice(
+                id="legacy",
+                identifiers={("pfsense", "entry-device-id")},
+                config_entries={"entry-id"},
+                disabled_by="user",
+            ),
+            MockDevice(
+                id="current",
+                identifiers={("pfsense", "firewall-device-id")},
+                config_entries={"entry-id"},
+            ),
+        ]
+
+        self.assertEqual(
+            get_existing_gateway_device_unique_id(
+                devices,
+                "entry-id",
+                "pfsense",
+                {"legacy"},
                 current_unique_id="firewall-device-id",
                 config_entry_unique_id="entry-device-id",
             ),

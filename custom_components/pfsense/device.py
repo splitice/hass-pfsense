@@ -45,6 +45,7 @@ def get_existing_gateway_device_unique_id(
             continue
 
         device_score = (
+            not getattr(device, "disabled", False),
             device.id in entity_device_ids,
             current_unique_id in gateway_unique_ids if current_unique_id else False,
             (
