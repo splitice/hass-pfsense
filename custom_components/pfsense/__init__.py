@@ -134,17 +134,14 @@ async def async_remove_config_entry_device(
 ) -> bool:
     """Remove a pfSense child device or removable duplicate gateway."""
     entity_registry = async_get_entity_registry(hass)
-    device_entity_entries = list(
-        async_entries_for_entity_device(
-            entity_registry, device_entry.id, include_disabled_entities=True
-        )
-    )
 
     child_device_mac_address = get_child_device_mac_address(
         device_entry, config_entry.entry_id
     )
     if child_device_mac_address is not None:
-        for entity_entry in device_entity_entries:
+        for entity_entry in async_entries_for_entity_device(
+            entity_registry, device_entry.id, include_disabled_entities=True
+        ):
             entity_registry.async_remove(entity_entry.entity_id)
 
         configured_mac_addresses, tracked_mac_addresses = (
@@ -188,6 +185,9 @@ async def async_remove_config_entry_device(
         config_entry.entry_id,
         DOMAIN,
         gateway_device_unique_id,
+        # Check all config-entry entities so duplicate gateway devices that still
+        # own stale entity-registry entries can be distinguished from unrelated
+        # device-specific entities during manual removal.
         {
             entity.device_id
             for entity in async_entries_for_entity_config_entry(
@@ -200,7 +200,9 @@ async def async_remove_config_entry_device(
     if device_entry.id not in duplicate_gateway_device_ids:
         return False
 
-    for entity_entry in device_entity_entries:
+    for entity_entry in async_entries_for_entity_device(
+        entity_registry, device_entry.id, include_disabled_entities=True
+    ):
         entity_registry.async_remove(entity_entry.entity_id)
 
     return True
