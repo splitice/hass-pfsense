@@ -97,6 +97,8 @@ async def _async_remove_duplicate_gateway_devices(
     if not gateway_device_unique_id:
         return
 
+    # Yield once so entity/device registry updates triggered during platform setup
+    # can settle before we remove any orphaned duplicate gateway devices.
     await asyncio.sleep(0)
 
     device_registry = async_get_device_registry(hass)
@@ -214,8 +216,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
         _async_remove_duplicate_gateway_devices(hass, entry, gateway_device_unique_id)
     )
 
-    service_registar = ServiceRegistrar(hass)
-    service_registar.async_register()
+    service_registrar = ServiceRegistrar(hass)
+    service_registrar.async_register()
 
     return True
 
