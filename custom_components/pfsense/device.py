@@ -139,3 +139,40 @@ def get_removable_duplicate_gateway_device_ids(
         duplicate_device_ids.append(device.id)
 
     return duplicate_device_ids
+
+
+def get_removable_duplicate_gateway_entity_ids(
+    devices: Iterable,
+    entities: Iterable,
+    config_entry_id: str,
+    domain: str,
+    gateway_device_unique_id: str | None,
+    duplicate_entity_disabler,
+) -> list[str]:
+    """Return stale duplicate-gateway entity IDs that can be safely removed."""
+    entities = list(entities)
+    duplicate_device_ids = set(
+        get_removable_duplicate_gateway_device_ids(
+            devices,
+            config_entry_id,
+            domain,
+            gateway_device_unique_id,
+            {entity.device_id for entity in entities if entity.device_id},
+            require_no_entities=False,
+        )
+    )
+    removable_entity_ids = []
+
+    for duplicate_device_id in duplicate_device_ids:
+        device_entities = [
+            entity for entity in entities if entity.device_id == duplicate_device_id
+        ]
+        if not device_entities:
+            continue
+        if not all(
+            entity.disabled_by == duplicate_entity_disabler for entity in device_entities
+        ):
+            continue
+        removable_entity_ids.extend(entity.entity_id for entity in device_entities)
+
+    return removable_entity_ids

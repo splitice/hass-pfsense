@@ -22,6 +22,9 @@ remove_device_mac_address_from_lists = MODULE.remove_device_mac_address_from_lis
 get_removable_duplicate_gateway_device_ids = (
     MODULE.get_removable_duplicate_gateway_device_ids
 )
+get_removable_duplicate_gateway_entity_ids = (
+    MODULE.get_removable_duplicate_gateway_entity_ids
+)
 
 
 class GetGatewayDeviceUniqueIdTests(unittest.TestCase):
@@ -71,6 +74,16 @@ class MockDevice:
     def disabled(self) -> bool:
         """Return whether the mock device is disabled."""
         return self.disabled_by is not None
+
+
+@dataclass
+class MockEntity:
+    """Minimal entity-registry entry for helper tests."""
+
+    entity_id: str
+    unique_id: str
+    device_id: str | None = None
+    disabled_by: str | None = None
 
 
 class ChildDeviceRemovalHelperTests(unittest.TestCase):
@@ -256,6 +269,81 @@ class GetRemovableDuplicateGatewayDeviceIdsTests(unittest.TestCase):
                 {"canonical"},
             ),
             ["duplicate"],
+        )
+
+
+class GetRemovableDuplicateGatewayEntityIdsTests(unittest.TestCase):
+    """Cover duplicate gateway entity cleanup selection."""
+
+    def test_returns_device_disabled_entities_on_duplicate_gateway(self) -> None:
+        """Remove stale entities that only exist due to a disabled duplicate device."""
+        devices = [
+            MockDevice(
+                id="canonical",
+                identifiers={("pfsense", "gateway-id")},
+                config_entries={"entry-id"},
+            ),
+            MockDevice(
+                id="duplicate",
+                identifiers={("pfsense", "legacy-id")},
+                config_entries={"entry-id"},
+                disabled_by="user",
+            ),
+        ]
+        entities = [
+            MockEntity(
+                entity_id="sensor.pfsense_temp",
+                unique_id="legacy_id_telemetry_system_temp",
+                device_id="duplicate",
+                disabled_by="device",
+            )
+        ]
+
+        self.assertEqual(
+            get_removable_duplicate_gateway_entity_ids(
+                devices,
+                entities,
+                "entry-id",
+                "pfsense",
+                "gateway-id",
+                "device",
+            ),
+            ["sensor.pfsense_temp"],
+        )
+
+    def test_keeps_duplicate_gateway_entities_when_not_disabled_by_device(self) -> None:
+        """Do not drop duplicate-gateway entities disabled for another reason."""
+        devices = [
+            MockDevice(
+                id="canonical",
+                identifiers={("pfsense", "gateway-id")},
+                config_entries={"entry-id"},
+            ),
+            MockDevice(
+                id="duplicate",
+                identifiers={("pfsense", "legacy-id")},
+                config_entries={"entry-id"},
+            ),
+        ]
+        entities = [
+            MockEntity(
+                entity_id="sensor.pfsense_temp",
+                unique_id="legacy_id_telemetry_system_temp",
+                device_id="duplicate",
+                disabled_by="user",
+            )
+        ]
+
+        self.assertEqual(
+            get_removable_duplicate_gateway_entity_ids(
+                devices,
+                entities,
+                "entry-id",
+                "pfsense",
+                "gateway-id",
+                "device",
+            ),
+            [],
         )
 
     def test_skips_duplicate_gateway_with_entities(self) -> None:

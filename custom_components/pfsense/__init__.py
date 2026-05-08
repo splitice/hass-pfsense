@@ -27,6 +27,7 @@ from homeassistant.helpers.device_registry import (
 )
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.entity_registry import (
+    RegistryEntryDisabler,
     async_entries_for_config_entry as async_entries_for_entity_config_entry,
     async_entries_for_device as async_entries_for_entity_device,
     async_get as async_get_entity_registry,
@@ -63,6 +64,7 @@ from .device import (
     get_child_device_mac_address,
     get_existing_gateway_device_unique_id,
     get_gateway_device_unique_id,
+    get_removable_duplicate_gateway_entity_ids,
     get_removable_duplicate_gateway_device_ids,
     remove_device_mac_address_from_lists,
 )
@@ -317,6 +319,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     hass.data[DOMAIN][entry.entry_id][
         GATEWAY_DEVICE_UNIQUE_ID
     ] = gateway_device_unique_id
+    removable_entity_ids = get_removable_duplicate_gateway_entity_ids(
+        devices,
+        async_entries_for_entity_config_entry(entity_registry, entry.entry_id),
+        entry.entry_id,
+        DOMAIN,
+        gateway_device_unique_id,
+        RegistryEntryDisabler.DEVICE,
+    )
+    for entity_id in removable_entity_ids:
+        entity_registry.async_remove(entity_id)
     if device_tracker_enabled:
         # Fetch initial data so we have data when entities subscribe
         await device_tracker_coordinator.async_config_entry_first_refresh()
